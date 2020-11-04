@@ -1,0 +1,128 @@
+---
+title: "BUAN6356 - HW 3"
+author: "Han"
+date: "10/30/2019"
+output:
+  md_document:
+    variant: markdown_github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+#Load Packages
+```{r}
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, reshape, gplots, ggmap, MASS, 
+               mlbench, data.table,leaps, pivottabler, forecast, dplyr,caret)
+```
+
+#Read Data 
+```{r}
+Spam_Data <- fread ("spambase.data")
+Spam_DF <- setDF (Spam_Data)
+str(Spam_DF)
+class(Spam_DF)
+```
+
+#Examine how each predictor is different between spam & non-sapm email by comparing class averages. 
+```{r}
+library(dplyr)
+Pivot <- Spam_DF %>%
+  group_by (V58)%>%
+  summarise_all(funs(mean))
+head(Pivot)
+```
+
+#Identify the 10 variables with highest difference between class average 
+```{r}
+Var_Table <-data.frame(r1=names(Pivot), t(Pivot))
+Var_Table["Difference"] <- NA
+Var_Table$Difference <- round(abs(Var_Table$X1 - Var_Table$X2),4)
+view(Var_Table)
+
+Final_Table <- Var_Table[-c(1),]
+Final_Table[order(-Final_Table$Difference),]
+class(Final_Table)
+```
+
+#Using training dataset with only 10 predictors with higest difference - Data Parition - Normalize the data 
+```{r}
+Working_Table <- Spam_DF[,c(57,56,55,27,19,21,25,16,26,52,58)]
+view(Working_Table)
+Working_Data <-transform(Working_Table, V58 = as.character(V58)) 
+str(Working_Data)
+
+set.seed(30)
+training.index <- sample (row.names(Working_Data), 0.8*dim(Working_Data)[1])
+valid.index <- setdiff(row.names(Working_Data), training.index)
+train.df <- Working_Data [training.index, ]
+valid.df <- Working_Data [valid.index, ]
+
+norm.values <- preProcess(train.df, method = c("center", "scale"))
+
+spambase.train.norm <- predict(norm.values, train.df)
+spambase.valid.norm <- predict(norm.values, valid.df)
+```
+
+# Run LDA & run prediction using Training Data set & plot 
+```{r}
+lda2 <- lda(V58~., data = spambase.train.norm)
+lda2
+
+pred2.train <- predict(lda2, spambase.train.norm)
+pred2.valid <- predict(lda2, spambase.valid.norm)
+
+plot(lda2)
+```
+# What are the prior probabilities?
+```{r}
+lda2$prior
+```
+/* As per the Dataset Description the spam and non-spam are depicted as 1 and 0 respectively. The prior probabilities give information about the distribution of spam and non-spam in the entire data set.Here the non-spams are having the 0.6119 and spam of 0.3880 probabilities.The number of non-spam cases are more compared to the spam. */
+
+# What are the coefficients of linear discriminants? Explain.
+```{r}
+lda2$scaling
+```
+/* The coefficients of linear discriminants are 
+V55,V56,V57-  measure the length of sequences of consecutive capital letters
+V27,V19,V21- */
+   
+
+# Generate linear discriminants using your analysis. How are they used in classifying spams and non-spams?
+
+```{r}
+lda2$scaling
+```
+/*  We can infer from the above data that the predictors V27,V25,V26 are mainly classified non-spam.Whereas the other Predictors(V57,V56,V55,V19,V21,V16,V52) are classified as spam.The discriminant values obtained negative are considered as non-spams and the values which are positive are considered spam. */
+
+# How many linear discriminants are in the model? Why?
+```{r}
+lda2$scaling
+```
+/* There is only 1 linear discriminant in the model which is LD1 ,because there are two classes which are specifically spam and non-spam. */
+
+# Generate LDA plot using the training and validation data. What information is presented in these plots? How are they different?
+
+```{r}
+plot(lda2,col="blue",main="Training DataSet")
+lda3 <- lda(V58~., data = spambase.valid.norm)
+lda3
+plot(lda3)
+```
+
+# Generate the relevant confusion matrix. What are the sensitivity and specificity?
+```{r}
+
+CMat <- table(pred2.valid$class, spambase.valid.norm$V58)  # pred v actual
+confusionMatrix(CMat)
+```
+/* Sensitivity is 92.72% and the Specificity is 66.75% */
